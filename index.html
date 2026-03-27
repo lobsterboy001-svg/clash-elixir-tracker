@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Clash Royale Text Elixir Tracker</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f0f5; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+    h1 { color: #2c2c54; margin-bottom:5px; }
+    #match-timer { font-size: 24px; margin-bottom: 10px; color:#2c3e50; }
+    #phase { margin-bottom: 15px; font-weight:bold; }
+    #elixir-bar { width: 300px; height: 25px; background: #dcdde1; border-radius: 15px; margin-bottom: 20px; overflow: hidden; }
+    #elixir-fill { height: 100%; width: 50%; background: #9b59b6; transition: width 0.2s; }
+    #cards-input { display: flex; gap: 10px; margin-bottom: 20px; position: relative; }
+    #card-name { padding: 10px; font-size: 16px; border-radius: 8px; border: 1px solid #b2bec3; width: 220px; }
+    #suggestions { position: absolute; top: 45px; left: 0; background: white; border: 1px solid #b2bec3; border-radius: 6px; width: 220px; max-height: 150px; overflow-y: auto; z-index: 10; }
+    .suggestion-item { padding: 5px 10px; cursor: pointer; }
+    .suggestion-item:hover { background: #9b59b6; color: white; }
+    #cards-buttons { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; width: 100%; max-width: 550px; }
+    .card-btn { padding: 10px; background: #dfe6e9; border-radius: 10px; border: 1px solid #b2bec3; cursor: pointer; transition: transform 0.1s, background 0.2s; text-align: center; font-weight: bold; }
+    .card-btn:hover { transform: scale(1.05); background: #9b59b6; color: white; }
+    @media(max-width: 500px){ #cards-buttons { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); } }
+  </style>
+</head>
+<body>
+
+<h1>Clash Royale Text Elixir Tracker</h1>
+<div id="match-timer">03:00</div>
+<div id="phase">Phase: Normal Elixir</div>
+
+<div id="elixir-bar"><div id="elixir-fill"></div></div>
+<h2>Opponent Elixir: <span id="elixir-num">5</span></h2>
+
+<div id="cards-input">
+  <input type="text" id="card-name" placeholder="Type card name">
+  <div id="suggestions"></div>
+</div>
+
+<div id="cards-buttons"></div>
+
+<script>
+let elixir = 5;
+let cardsRemembered = [];
+let elixirEvents = [];
+
+// All 121 cards, text-only
+const allCards = {
+"Knight":3,"Archers":3,"Goblins":2,"Giant":5,"P.E.K.K.A":7,"Minions":3,"Balloon":5,"Witch":5,"Barbarians":5,"Golem":8,
+"Skeletons":1,"Valkyrie":4,"Skeleton Army":3,"Bomber":2,"Musketeer":4,"Baby Dragon":4,"Prince":5,"Wizard":5,
+"Mini P.E.K.K.A":4,"Spear Goblins":2,"Giant Skeleton":6,"Hog Rider":4,"Minion Horde":5,"Ice Wizard":3,"Royal Giant":6,
+"Guards":3,"Princess":3,"Dark Prince":4,"Three Musketeers":9,"Lava Hound":7,"Ice Spirit":1,"Fire Spirit":1,"Miner":3,
+"Sparky":6,"Bowler":5,"Lumberjack":4,"Battle Ram":4,"Inferno Dragon":4,"Ice Golem":2,"Mega Minion":3,"Dart Goblin":3,
+"Goblin Gang":3,"Electro Wizard":4,"Elite Barbarians":6,"Hunter":4,"Executioner":5,"Bandit":3,"Royal Recruits":7,
+"Night Witch":4,"Bats":2,"Royal Ghost":3,"Ram Rider":5,"Zappies":4,"Rascals":5,"Cannon Cart":5,"Mega Knight":7,
+"Skeleton Barrel":3,"Flying Machine":4,"Wall Breakers":2,"Royal Hogs":5,"Goblin Giant":6,"Fisherman":3,"Magic Archer":4,
+"Electro Dragon":5,"Firecracker":3,"Mighty Miner":4,"Elixir Golem":3,"Battle Healer":4,"Skeleton King":4,"Archer Queen":5,
+"Golden Knight":4,"Monk":5,"Skeleton Dragons":4,"Mother Witch":4,"Electro Spirit":1,"Electro Giant":7,"Phoenix":4,
+"Little Prince":3,"Goblin Demolisher":4,"Goblin Machine":5,"Suspicious Bush":2,"Goblinstein":5,"Rune Giant":4,"Berserker":2,
+"Boss Bandit":6,"Cannon":3,"Goblin Hut":4,"Mortar":4,"Inferno Tower":5,"Bomb Tower":4,"Barbarian Hut":6,"Tesla":4,
+"Elixir Collector":6,"X-Bow":6,"Tombstone":3,"Furnace":4,"Goblin Cage":4,"Goblin Drill":4,"Fireball":4,"Arrows":3,
+"Rage":2,"Rocket":6,"Goblin Barrel":3,"Freeze":4,"Mirror":0,"Lightning":6,"Zap":2,"Poison":4,"Graveyard":5,
+"The Log":2,"Tornado":3,"Clone":3,"Earthquake":3,"Barbarian Barrel":2,"Giant Snowball":2,"Royal Delivery":3,
+"Void":3,"Goblin Curse":2,"Spirit Empress":6,"Vines":3
+};
+
+// Timer
+let matchSeconds = 180; // 3:00 min
+let overtimeSeconds = 0;
+const timerDisplay = document.getElementById('match-timer');
+const phaseDisplay = document.getElementById('phase');
+
+function formatTime(sec){
+  const m = Math.floor(sec/60).toString().padStart(2,'0');
+  const s = (sec%60).toString().padStart(2,'0');
+  return `${m}:${s}`;
+}
+
+// Update phase based on timer
+function getPhase(){
+  if(matchSeconds > 60) return {phase:"Normal Elixir", regen:2800};
+  else if(matchSeconds > 0) return {phase:"Double Elixir", regen:1400};
+  else return {phase:"Triple Elixir (Overtime)", regen:933};
+}
+
+// Update elixir bar
+function updateElixir(){
+  if(elixir>10) elixir=10;
+  if(elixir<0) elixir=0;
+  document.getElementById('elixir-num').innerText = elixir;
+  document.getElementById('elixir-fill').style.width = (elixir/10*100)+'%';
+}
+
+// Add card play
+function addCardPlay(name){
+  const cost = allCards[name];
+  if(!cost) return;
+  const timestamp = Date.now();
+  elixirEvents.push({time: timestamp, cost});
+  elixir -= cost;
+
+  // Remember last 8 cards
+  if(!cardsRemembered.find(c=>c.name===name)){
+    if(cardsRemembered.length>=8) cardsRemembered.shift();
+    cardsRemembered.push({name, cost});
+    renderCards();
+  }
+
+  updateElixir();
+}
+
+// Render last played cards
+function renderCards(){
+  const container = document.getElementById('cards-buttons');
+  container.innerHTML = '';
+  cardsRemembered.forEach(card=>{
+    const btn = document.createElement('button');
+    btn.classList.add('card-btn');
+    btn.innerText = `${card.name} (${card.cost})`;
+    btn.onclick = ()=>addCardPlay(card.name);
+    container.appendChild(btn);
+  });
+}
+
+// Auto-suggest
+const input = document.getElementById('card-name');
+const suggestions = document.getElementById('suggestions');
+input.addEventListener('input', ()=>{
+  const val = input.value.toLowerCase();
+  suggestions.innerHTML='';
+  if(!val) return;
+  Object.keys(allCards).forEach(card=>{
+    if(card.toLowerCase().includes(val)){
+      const div = document.createElement('div');
+      div.classList.add('suggestion-item');
+      div.innerText = card;
+      div.onclick = ()=>{ input.value=''; suggestions.innerHTML=''; addCardPlay(card); };
+      suggestions.appendChild(div);
+    }
+  });
+});
+
+// Correct elixir regen loop
+function regenElixir(){
+  const phase = getPhase();
+  if(elixir < 10) elixir += 1;
+  updateElixir();
+  setTimeout(regenElixir, phase.regen);
+}
+regenElixir();
+
+// Match timer countdown + overtime
+setInterval(()=>{
+  if(matchSeconds>0) matchSeconds--;
+  else overtimeSeconds++;
+  const totalSec = matchSeconds>0 ? matchSeconds : overtimeSeconds;
+  timerDisplay.innerText = formatTime(totalSec);
+  phaseDisplay.innerText = `Phase: ${getPhase().phase}`;
+},1000);
+
+updateElixir();
+renderCards();
+</script>
+
+</body>
+</html>
